@@ -78,7 +78,9 @@ router.post('/', async (req, res) => {
           ...safeMessages,
         ],
         temperature: 0.4,
-        max_tokens: 500,
+        // Burmese responses use several tokens per visible character. Allow
+        // enough room for a complete, multi-paragraph answer.
+        max_tokens: 1200,
       },
       {
         headers: {

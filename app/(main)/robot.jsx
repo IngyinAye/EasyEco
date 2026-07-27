@@ -493,7 +493,9 @@ const styles = StyleSheet.create({
   },
   messageText: {
     fontSize: 14,
-    lineHeight: 20,
+    // Myanmar combining marks need extra vertical room so adjacent lines do
+    // not overlap on Android system fonts.
+    lineHeight: 28,
   },
   messageImages: {
     maxHeight: 130,

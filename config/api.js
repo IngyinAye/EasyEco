@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 const API_PORT = '5000';
 const API_PATH = '/api';
-const LOCAL_NETWORK_HOST = '192.168.99.59';
+const LOCAL_NETWORK_HOST = '118.27.151.8';
 
 const getExpoHost = () => {
   const hostUri =
