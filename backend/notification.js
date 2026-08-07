@@ -28,6 +28,12 @@ async function sendDailyTip(period) {
 
   const body = tips[getMyanmarDayIndex()];
   const response = await getMessaging().send({
+    // A notification payload lets Android display this from the system tray
+    // while the app is backgrounded or removed from recent apps.
+    notification: {
+      title: 'EasyEco Energy Tip',
+      body,
+    },
     data: {
       title: 'EasyEco Energy Tip',
       body,
@@ -35,6 +41,12 @@ async function sendDailyTip(period) {
     },
     android: {
       priority: 'high',
+      notification: {
+        channelId: 'easyeco_default',
+        icon: 'ic_stat_easyeco',
+        sound: 'default',
+        notificationPriority: 'PRIORITY_HIGH',
+      },
     },
     topic: DAILY_TIPS_TOPIC,
   });
@@ -43,7 +55,12 @@ async function sendDailyTip(period) {
   return response;
 }
 
+let dailyTipSchedulerStarted = false;
+
 function startDailyTipScheduler() {
+  if (dailyTipSchedulerStarted) return;
+  dailyTipSchedulerStarted = true;
+
   const options = { timezone: TIME_ZONE };
 
   cron.schedule('0 8 * * *', () => sendDailyTip('morning').catch(console.error), options);
