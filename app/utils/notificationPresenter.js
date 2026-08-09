@@ -1,17 +1,24 @@
 import notifee, { AndroidImportance } from '@notifee/react-native';
+import { Platform } from 'react-native';
 import { saveNotification } from './notificationStore';
 
 const NOTIFICATION_CHANNEL_ID = 'easyeco_default';
+
+export async function ensureNotificationChannel() {
+  if (Platform.OS !== 'android') return;
+
+  await notifee.createChannel({
+    id: NOTIFICATION_CHANNEL_ID,
+    name: 'EasyEco notifications',
+    importance: AndroidImportance.HIGH,
+  });
+}
 
 export async function presentNotification({ title, body, type = 'general' }) {
   const storedNotification = await saveNotification({ title, body, type });
 
   try {
-    await notifee.createChannel({
-      id: NOTIFICATION_CHANNEL_ID,
-      name: 'EasyEco notifications',
-      importance: AndroidImportance.HIGH,
-    });
+    await ensureNotificationChannel();
 
     await notifee.displayNotification({
       id: storedNotification.id,

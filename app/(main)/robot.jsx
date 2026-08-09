@@ -10,16 +10,22 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
-  Animated
+  Animated,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import Svg, { Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import Bot_Logo from '../../assets/bot_logo.svg';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/api';
 import { getChatById, saveChat } from '../utils/chatHistory';
+import { getUser } from '../utils/authStorage';
 
 const FLOATING_PADDING = 20;
 const BAR_HEIGHT = 54;
@@ -27,6 +33,8 @@ const BAR_HEIGHT = 54;
 const TAB_BAR_HEIGHT = 60;
 const TAB_BAR_GAP = 16;
 const CHAT_COMPOSER_BOTTOM = FLOATING_PADDING + TAB_BAR_HEIGHT + TAB_BAR_GAP;
+const MESSAGE_MENU_WIDTH = 148;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const askMeterAI = async (messages) => {
   const response = await axios.post(`${API_BASE_URL}/chat`, { messages });
@@ -69,6 +77,9 @@ export default function ChatbotScreen() {
   const [isSending, setIsSending] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [messageMenu, setMessageMenu] = useState(null);
+  const [userName, setUserName] = useState('');
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const keyboardHeightRef = useRef(new Animated.Value(0)).current;
@@ -78,6 +89,17 @@ export default function ChatbotScreen() {
     "Tips to save energy on Air Conditioning?",
     "Which appliances consume the most power?"
   ];
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const user = await getUser();
+      const firstName = user?.name?.trim().split(/\s+/)[0] || 'User';
+
+      setUserName(firstName);
+    };
+
+    loadUser();
+  }, []);
 
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
@@ -119,6 +141,7 @@ export default function ChatbotScreen() {
         setShowSuggestions(true);
         setInputText('');
         setSelectedImages([]);
+        setEditingMessageId(null);
         return;
       }
 
@@ -130,11 +153,93 @@ export default function ChatbotScreen() {
         setActiveChatId(chat.id);
         setShowSuggestions(false);
         setSelectedImages([]);
+        setEditingMessageId(null);
       }
     };
 
     loadSelectedChat();
   }, [chatId, newChat]);
+
+  const copyMessage = async (message) => {
+    try {
+      await Clipboard.setStringAsync(message.text);
+    } catch (error) {
+      console.warn('Unable to copy chat message:', error);
+    }
+  };
+
+  const openMessageMenu = (message, event) => {
+    const { pageX, pageY } = event.nativeEvent;
+    const left = Math.max(
+      16,
+      Math.min(pageX - MESSAGE_MENU_WIDTH + 20, SCREEN_WIDTH - MESSAGE_MENU_WIDTH - 16)
+    );
+    const top = Math.max(16, pageY - 100);
+
+    Keyboard.dismiss();
+    setMessageMenu({ message, left, top });
+  };
+
+  const closeMessageMenu = () => setMessageMenu(null);
+
+  const handleCopyFromMenu = async () => {
+    if (!messageMenu) return;
+    await copyMessage(messageMenu.message);
+    closeMessageMenu();
+  };
+
+  const handleEditFromMenu = () => {
+    if (!messageMenu) return;
+    startEditingMessage(messageMenu.message);
+    closeMessageMenu();
+  };
+
+  const retryMessage = async (message) => {
+    if (isSending) return;
+
+    const retryIndex = messages.findIndex((item) => item.id === message.id);
+    if (retryIndex < 0) return;
+
+    // Remove the failed response and continue the conversation from this message.
+    const messagesBeforeRetry = messages.slice(0, retryIndex);
+    const retriedUserMessage = { ...message, canRetry: false };
+    const messagesToSend = [...messagesBeforeRetry, retriedUserMessage];
+
+    setMessages(messagesToSend);
+    saveChat({ id: activeChatId, messages: messagesToSend });
+    setIsSending(true);
+
+    try {
+      const answer = await askMeterAI(messagesToSend.map(toApiMessage));
+      const assistantMessage = {
+        id: `${Date.now()}-assistant`,
+        role: 'assistant',
+        text: answer || 'Sorry, I could not get an answer right now.',
+      };
+      const updatedMessages = [...messagesToSend, assistantMessage];
+      setMessages(updatedMessages);
+      saveChat({ id: activeChatId, messages: updatedMessages });
+    } catch (error) {
+      const failedUserMessage = { ...retriedUserMessage, canRetry: true };
+      const errorMessage = {
+        id: `${Date.now()}-error`,
+        role: 'assistant',
+        text: error.response?.data?.message || 'Failed to contact the meter assistant.',
+      };
+      const updatedMessages = [...messagesBeforeRetry, failedUserMessage, errorMessage];
+      setMessages(updatedMessages);
+      saveChat({ id: activeChatId, messages: updatedMessages });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const startEditingMessage = (message) => {
+    setEditingMessageId(message.id);
+    setInputText(message.text);
+    setSelectedImages(message.images || []);
+    setShowSuggestions(false);
+  };
 
   const handleSend = async (messageToSend = inputText) => {
     const userMessage = messageToSend.trim();
@@ -147,15 +252,23 @@ export default function ChatbotScreen() {
       text: userMessage || 'Sent an image.',
       images: imagesToSend,
     };
-    const conversation = [...messages, newUserMessage].map(toApiMessage);
+    const editingIndex = editingMessageId
+      ? messages.findIndex((message) => message.id === editingMessageId)
+      : -1;
+    const messagesBeforeSend = editingIndex >= 0
+      ? messages.slice(0, editingIndex)
+      : messages;
+    const messagesWithUserMessage = [...messagesBeforeSend, newUserMessage];
+    const conversation = messagesWithUserMessage.map(toApiMessage);
     const nextChatId = activeChatId || `${Date.now()}`;
 
-    setMessages((currentMessages) => [...currentMessages, newUserMessage]);
+    setMessages(messagesWithUserMessage);
     setActiveChatId(nextChatId);
-    saveChat({ id: nextChatId, messages: [...messages, newUserMessage] });
+    saveChat({ id: nextChatId, messages: messagesWithUserMessage });
     setShowSuggestions(false);
     setInputText('');
     setSelectedImages([]);
+    setEditingMessageId(null);
     Keyboard.dismiss();
 
     try {
@@ -167,16 +280,17 @@ export default function ChatbotScreen() {
         role: 'assistant',
         text: answer || 'Sorry, I could not get an answer right now.',
       };
-      const updatedMessages = [...messages, newUserMessage, assistantMessage];
+      const updatedMessages = [...messagesWithUserMessage, assistantMessage];
       setMessages(updatedMessages);
       saveChat({ id: nextChatId, messages: updatedMessages });
     } catch (error) {
+      const failedUserMessage = { ...newUserMessage, canRetry: true };
       const errorMessage = {
         id: `${Date.now()}-error`,
         role: 'assistant',
         text: error.response?.data?.message || 'Failed to contact the meter assistant.',
       };
-      const updatedMessages = [...messages, newUserMessage, errorMessage];
+      const updatedMessages = [...messagesBeforeSend, failedUserMessage, errorMessage];
       setMessages(updatedMessages);
       saveChat({ id: nextChatId, messages: updatedMessages });
     } finally {
@@ -240,6 +354,37 @@ export default function ChatbotScreen() {
 
   return (
     <View style={styles.container}>
+      <Modal
+        transparent
+        visible={Boolean(messageMenu)}
+        animationType="fade"
+        onRequestClose={closeMessageMenu}
+      >
+        <View style={styles.messageMenuOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeMessageMenu} />
+          {messageMenu && (
+            <View
+              style={[
+                styles.messageContextMenu,
+                { left: messageMenu.left, top: messageMenu.top },
+              ]}
+            >
+              <TouchableOpacity style={styles.messageContextMenuItem} onPress={handleCopyFromMenu}>
+                <Ionicons name="copy-outline" size={19} color="#1C3D5A" />
+                <Text style={styles.messageContextMenuText}>Copy text</Text>
+              </TouchableOpacity>
+
+              {messageMenu.message.role === 'user' && (
+                <TouchableOpacity style={styles.messageContextMenuItem} onPress={handleEditFromMenu}>
+                  <Ionicons name="pencil-outline" size={19} color="#1C3D5A" />
+                  <Text style={styles.messageContextMenuText}>Edit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      </Modal>
+
       <View style={[styles.header, { marginTop: insets.top }]}>
         <TouchableOpacity style={styles.headerButton} onPress={() => router.push('/(main)')}>
           <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -269,44 +414,60 @@ export default function ChatbotScreen() {
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View>
-            <View style={styles.mainContent}>
-              <View style={styles.botCircle}>
-                <Bot_Logo width={100} height={100} />
+            {messages.length === 0 && (
+              <View style={styles.mainContent}>
+                <View style={styles.botCircle}>
+                  <Bot_Logo width={100} height={100} />
+                </View>
+                <Text style={styles.welcomeText}>
+                  Hi {userName}, how can I help{"\n"}you today?
+                </Text>
               </View>
-              <Text style={styles.welcomeText}>
-                Hi User, how can I help{"\n"}you today?
-              </Text>
-            </View>
+            )}
 
             {messages.length > 0 && (
               <View style={styles.messagesContainer}>
                 {messages.map((message) => (
-                  <View
-                    key={message.id}
-                    style={[
-                      styles.messageBubble,
-                      message.role === 'user' ? styles.userMessage : styles.assistantMessage,
-                    ]}
-                  >
-                    {message.images?.length > 0 && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.messageImages}>
-                        {message.images.map((image, index) => (
-                          <Image
-                            key={`${getImageUri(image)}-${index}`}
-                            source={{ uri: getImageUri(image) }}
-                            style={styles.messageImage}
-                          />
-                        ))}
-                      </ScrollView>
-                    )}
-                    <Text
+                  <View key={message.id} style={styles.messageItem}>
+                    <Pressable
+                      onLongPress={(event) => openMessageMenu(message, event)}
+                      delayLongPress={350}
                       style={[
-                        styles.messageText,
-                        message.role === 'user' ? styles.userMessageText : styles.assistantMessageText,
+                        styles.messageBubble,
+                        message.role === 'user' ? styles.userMessage : styles.assistantMessage,
                       ]}
                     >
-                      {message.text}
-                    </Text>
+                      {message.images?.length > 0 && (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.messageImages}>
+                          {message.images.map((image, index) => (
+                            <Image
+                              key={`${getImageUri(image)}-${index}`}
+                              source={{ uri: getImageUri(image) }}
+                              style={styles.messageImage}
+                            />
+                          ))}
+                        </ScrollView>
+                      )}
+                      <Text
+                        style={[
+                          styles.messageText,
+                          message.role === 'user' ? styles.userMessageText : styles.assistantMessageText,
+                        ]}
+                      >
+                        {message.text}
+                      </Text>
+                    </Pressable>
+                    {message.role === 'user' && message.canRetry && (
+                      <TouchableOpacity
+                        style={styles.retryAction}
+                        onPress={() => retryMessage(message)}
+                        disabled={isSending}
+                        accessibilityLabel="Retry message"
+                      >
+                        <Ionicons name="refresh-outline" size={17} color="#1A56DB" />
+                        <Text style={styles.retryActionText}>Retry</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ))}
 
@@ -483,6 +644,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 10,
   },
+  messageItem: {
+    width: '100%',
+  },
   userMessage: {
     alignSelf: 'flex-end',
     backgroundColor: '#1A56DB',
@@ -510,8 +674,51 @@ const styles = StyleSheet.create({
   userMessageText: {
     color: '#FFF',
   },
+  retryAction: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: -5,
+    marginRight: 4,
+    marginBottom: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  retryActionText: {
+    color: '#1A56DB',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   assistantMessageText: {
     color: '#1C3D5A',
+  },
+  messageMenuOverlay: {
+    flex: 1,
+  },
+  messageContextMenu: {
+    position: 'absolute',
+    width: MESSAGE_MENU_WIDTH,
+    paddingVertical: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  messageContextMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    minHeight: 42,
+    paddingHorizontal: 14,
+  },
+  messageContextMenuText: {
+    color: '#1C3D5A',
+    fontSize: 14,
+    fontWeight: '600',
   },
   suggestionsContainer: { 
     marginBottom: 10,

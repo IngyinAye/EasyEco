@@ -44,10 +44,11 @@ const persistChat = async ({ id, messages }) => {
   // ImagePicker's temporary URI alone is not reliable after the app restarts.
   // Keep the base64 payload as well so a chat opened from history can display
   // the attachment and send it back to the assistant as conversation context.
-  const textMessages = messages.map(({ id: messageId, role, text, images = [] }) => ({
+  const textMessages = messages.map(({ id: messageId, role, text, images = [], canRetry = false }) => ({
     id: messageId,
     role,
     text,
+    canRetry,
     images: Array.isArray(images)
       ? images
         .filter((image) => image?.uri || image?.base64)

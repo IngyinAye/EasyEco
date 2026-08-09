@@ -58,11 +58,30 @@ export default function Profile() {
     const loadProfile = async () => {
       try {
         const user = await getUser();
-        setUserName(user?.name || '');
-        setEditNumber(user?.phoneNumber || '');
-        setEditGmail(user?.email || '');
-        setProfileImage(user?.profileImage || null);
-        setEditProfileImage(user?.profileImage || null);
+        if (!user) return;
+
+        // Display the signed-in user's saved details immediately. If the
+        // profile refresh below fails (for example, while the server is being
+        // deployed), the profile must not fall back to the generic "User".
+        setUserName(user.name || '');
+        setEditNumber(user.phoneNumber || '');
+        setEditGmail(user.email || '');
+        setProfileImage(user.profileImage || null);
+        setEditProfileImage(user.profileImage || null);
+
+        if (!user.token) return;
+
+        const response = await axios.get(`${API_BASE_URL}/users/profile`, {
+          headers: { Authorization: `Bearer ${user.token}` },
+        });
+        const currentUser = { ...user, ...response.data };
+
+        await saveSession(currentUser);
+        setUserName(currentUser.name || '');
+        setEditNumber(currentUser.phoneNumber || '');
+        setEditGmail(currentUser.email || '');
+        setProfileImage(currentUser.profileImage || null);
+        setEditProfileImage(currentUser.profileImage || null);
       } catch (error) {
         console.warn('Unable to load profile:', error);
       }

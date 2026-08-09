@@ -18,8 +18,13 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
-          "data": { "scheme": "fb1681691103048797" }
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": {
+            "scheme": "fb1681691103048797"
+          }
         }
       ],
       "adaptiveIcon": {
@@ -29,8 +34,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "6c1baa2b-95cf-4fd4-a3ff-d9ac4b777bf3"
+        "projectId": "38599272-bc4b-4754-bea2-31df4d395d2e"
       }
-    }
+    },
+    "owner": "easyeco"
   }
 }

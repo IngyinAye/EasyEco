@@ -5,7 +5,10 @@ import messaging from '@react-native-firebase/messaging';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { UsageProvider } from './Usage/UsageContext';
 import { LanguageProvider } from './context/LanguageContext';
-import { presentRemoteNotification } from './utils/notificationPresenter';
+import { ensureNotificationChannel, presentRemoteNotification } from './utils/notificationPresenter';
+import { getUser } from './utils/authStorage';
+
+const DAILY_TIPS_TOPIC = 'daily_energy_tips';
 
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   await presentRemoteNotification(remoteMessage);
@@ -38,8 +41,17 @@ export default function RootLayout() {
           return;
         }
 
+        await ensureNotificationChannel();
         const token = await messaging().getToken();
         console.log('Device FCM Token:', token);
+
+        // Topic subscriptions can be lost when Firebase rotates the device token.
+        // Restore it whenever a signed-in user opens the app.
+        const user = await getUser();
+        if (user?.token) {
+          await messaging().subscribeToTopic(DAILY_TIPS_TOPIC);
+          console.log(`Subscribed to topic: ${DAILY_TIPS_TOPIC}`);
+        }
 
         await messaging().unsubscribeFromTopic('all_users');
         console.log('Unsubscribed from topic: all_users');
@@ -55,7 +67,22 @@ export default function RootLayout() {
       await presentRemoteNotification(remoteMessage);
     });
 
-    return unsubscribe;
+    const unsubscribeTokenRefresh = messaging().onTokenRefresh(async () => {
+      try {
+        const user = await getUser();
+        if (user?.token) {
+          await messaging().subscribeToTopic(DAILY_TIPS_TOPIC);
+          console.log(`Re-subscribed to topic after token refresh: ${DAILY_TIPS_TOPIC}`);
+        }
+      } catch (error) {
+        console.log('Notification token refresh error:', error);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeTokenRefresh();
+    };
   }, []);
 
   return (

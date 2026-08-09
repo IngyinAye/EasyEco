@@ -329,6 +329,26 @@ const updateProfile = async (req, res) => {
   }
 };
 
+const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      profileImage: user.profileImage,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -640,6 +660,7 @@ module.exports = {
   registerUser,
   loginUser,
   requestPasswordReset,
+  getProfile,
   updateProfile,
   changePassword,
   requestPasswordResetOtp,
