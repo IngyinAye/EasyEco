@@ -6,7 +6,6 @@ const connectDB = require('./config/db');
 const { startDailyTipScheduler } = require('./notification');
 
 dotenv.config();
-connectDB();
 
 const app = express();
 
@@ -26,6 +25,9 @@ app.use('/api/products', productRoutes);
 const usageRoutes = require('./routes/usageRoutes');
 app.use('/api/usage', usageRoutes);
 
+const usageSnapshotRoutes = require('./routes/usageSnapshotRoutes');
+app.use('/api/usage-snapshots', usageSnapshotRoutes);
+
 const apiRoutes = require('./routes/apiRoutes');
 app.use('/api', apiRoutes);
 
@@ -33,7 +35,29 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-  startDailyTipScheduler();
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+      startDailyTipScheduler();
+    });
+  } catch (error) {
+    const isAtlasAccessError =
+      error?.message?.includes('tlsv1 alert internal error') ||
+      error?.name === 'MongooseServerSelectionError';
+
+    if (isAtlasAccessError) {
+      console.error(
+        'MongoDB Atlas rejected the connection. In Atlas, add this computer\'s public IP to Network Access > IP Access List, then restart the server.'
+      );
+    } else {
+      console.error('MongoDB connection failed:', error.message);
+    }
+
+    process.exit(1);
+  }
+};
+
+startServer();
