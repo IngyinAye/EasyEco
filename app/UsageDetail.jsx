@@ -2,16 +2,13 @@ import React from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import { AntDesign } from '@expo/vector-icons';
 import { useUsage } from './Usage/UsageContext';
 import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
 import { useLanguage } from './context/LanguageContext';
 
 // ===== COMPONENT =====
-export default function UsageDetail() {
-  const router = useRouter();
-  const { type } = useLocalSearchParams();
+export default function UsageDetail({ visible, onClose, type = 'current', estimatedCost }) {
   const { getUsage } = useUsage();
   const { t } = useLanguage();
   const {
@@ -31,15 +28,15 @@ export default function UsageDetail() {
 
   return (
     <Modal
-      visible={true}
+      visible={visible}
       transparent={true}
       animationType="slide"
-      onRequestClose={() => router.back()}
+      onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
           {/* Close Button */}
-          <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <AntDesign name="close" size={20} color="#333" />
           </TouchableOpacity>
 
@@ -71,14 +68,15 @@ export default function UsageDetail() {
           {/* Summary */}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('currentUsage')}</Text>
-            <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} {t('units')}</Text>
+           <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} {t('units')}</Text>
             <Text style={styles.summaryCost}>{formatCost(totalDailyCost)} MMK</Text>
+
           </View>
 
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t('estimatedTotal')}</Text>
             <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} {t('units')}</Text>
             <Text style={styles.summaryCost}>{formatCost(totalMonthlyCost)} MMK</Text>
+            <Text style={styles.summaryCost}>{formatCost(estimatedCost ?? totalMonthlyCost)} MMK</Text>
           </View>
         </View>
       </View>

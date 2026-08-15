@@ -92,3 +92,43 @@ export const formatUnits = (units) => {
 };
 
 export const formatCost = (cost) => Math.round(Number(cost) || 0).toLocaleString();
+
+export const generateRecommendation = (devices = []) => {
+  if (!Array.isArray(devices) || devices.length === 0) {
+    return 'Add your device usage to get energy-saving tips.';
+  }
+
+  const highestWattDevice = devices.reduce((highest, device) => (
+    parseWatt(device.watt) > parseWatt(highest.watt) ? device : highest
+  ));
+
+  return `Reduce ${highestWattDevice.name || 'this device'} usage to save energy.`;
+};
+
+export const generateDetailedRecommendations = (getUsage, dailyRecords = [], monthlyBudget = 0) => {
+  const { allItems, totalMonthlyCost } = summarizeUsageBill(getUsage);
+  const recordedCost = Array.isArray(dailyRecords)
+    ? dailyRecords.reduce((sum, record) => sum + (Number(record.cost) || 0), 0)
+    : 0;
+  const estimatedCost = Math.max(totalMonthlyCost, recordedCost);
+  const budget = Number(monthlyBudget) || 0;
+  const targetSavings = Math.max(Math.round(estimatedCost - budget), 0);
+
+  if (targetSavings === 0) {
+    return { isOverBudget: false, recommendations: [], targetSavings: 0 };
+  }
+
+  const recommendations = allItems
+    .filter((item) => item.monthlyCost > 0)
+    .sort((a, b) => b.monthlyCost - a.monthlyCost)
+    .slice(0, 3)
+    .map((item) => ({
+      id: item.id,
+      name: item.name || 'Device',
+      iconType: '',
+      recommendation: 'Reduce daily use of this device to lower your monthly bill.',
+      savings: Math.max(1, Math.round(item.monthlyCost * 0.1)),
+    }));
+
+  return { isOverBudget: true, recommendations, targetSavings };
+};

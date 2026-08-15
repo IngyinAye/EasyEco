@@ -25,9 +25,6 @@ app.use('/api/products', productRoutes);
 const usageRoutes = require('./routes/usageRoutes');
 app.use('/api/usage', usageRoutes);
 
-const usageSnapshotRoutes = require('./routes/usageSnapshotRoutes');
-app.use('/api/usage-snapshots', usageSnapshotRoutes);
-
 const apiRoutes = require('./routes/apiRoutes');
 app.use('/api', apiRoutes);
 

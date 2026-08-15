@@ -32,10 +32,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-    timezone: {
-      type: String,
-      default: 'Asia/Rangoon',
-    },
   },
   {
     timestamps: true,
