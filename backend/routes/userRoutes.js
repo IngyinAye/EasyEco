@@ -15,6 +15,10 @@ const {
   facebookLogin,
 } = require('../controllers/userController');
 const requireAuth = require('../middleware/requireAuth');
+const {
+  setMonthlyBudget,
+  getMonthlyBudget,
+} = require('../controllers/userController');
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);
@@ -28,5 +32,7 @@ router.post('/reset-password', resetPassword);
 
 router.post('/google-login', googleLogin);
 router.post('/facebook-login', facebookLogin);
+router.post('/budget', requireAuth, setMonthlyBudget);
+router.get('/budget', requireAuth, getMonthlyBudget);
 
 module.exports = router;

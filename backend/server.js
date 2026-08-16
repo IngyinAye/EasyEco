@@ -27,8 +27,21 @@ app.use('/api/usage', usageRoutes);
 
 const apiRoutes = require('./routes/apiRoutes');
 app.use('/api', apiRoutes);
+app.use('/api/usage-snapshots', require('./routes/usageSnapshotRoutes'));
 
 app.use('/api/chat', require('./routes/chatRoutes'));
+
+app.use((error, req, res, next) => {
+  console.error(error);
+
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  res.status(error.status || 500).json({
+    message: error.message || 'Internal server error.',
+  });
+});
 
 const PORT = process.env.PORT || 5000;
 

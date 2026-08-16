@@ -656,6 +656,51 @@ const facebookLogin = async (req, res) => {
   }
 };
 
+const setMonthlyBudget = async (req, res) => {
+  try {
+    const { monthlyBudget } = req.body;
+
+    if (!Number.isFinite(monthlyBudget) || monthlyBudget < 0) {
+      return res.status(400).json({
+        message: 'monthlyBudget must be a valid non-negative number.',
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { monthlyBudget },
+      { new: true, runValidators: true }
+    ).select('monthlyBudget');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    res.status(200).json({
+      message: 'Monthly budget saved.',
+      monthlyBudget: user.monthlyBudget,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Could not save monthly budget.' });
+  }
+};
+
+const getMonthlyBudget = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('monthlyBudget');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    res.status(200).json({
+      monthlyBudget: user.monthlyBudget ?? 0,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Could not get monthly budget.' });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -668,4 +713,6 @@ module.exports = {
   resetPassword,
   googleLogin,
   facebookLogin,
+  setMonthlyBudget,
+  getMonthlyBudget,
 };
