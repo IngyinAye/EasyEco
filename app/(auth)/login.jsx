@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import axios from 'axios';
 import { saveSession } from '../utils/authStorage';
 import { showAuthSuccessNotification } from '../utils/authNotification';
+import { useUsage } from '../Usage/UsageContext';
 
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
@@ -48,6 +49,7 @@ const AUTH_REDIRECT_OPTIONS = {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
+  const { refreshUsage } = useUsage();
 
   const [phoneNumber, setPhoneNumber] =
     useState('');
@@ -173,6 +175,7 @@ export default function LoginScreen() {
       );
 
       await saveSession(response.data);
+      await refreshUsage();
       await showAuthSuccessNotification();
       router.replace('/(main)');
     } catch (error) {
@@ -196,6 +199,7 @@ export default function LoginScreen() {
       });
 
       await saveSession({ ...response.data, provider: 'google' });
+      await refreshUsage();
 
       await showAuthSuccessNotification();
       router.replace('/(main)');
@@ -217,6 +221,7 @@ export default function LoginScreen() {
         });
 
         await saveSession({ ...response.data, provider: 'facebook' });
+        await refreshUsage();
 
         await showAuthSuccessNotification();
         router.replace('/(main)');

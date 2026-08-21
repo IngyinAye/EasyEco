@@ -61,7 +61,7 @@ export default function Calculate() {
   const {
     devices, monthlyBudget, dailyRecords,
     getUsage, getForecast, saveDailyRecord, saveMonthlyBudget,
-    saveConfiguration, hasCalculatedBill, isReady, markBillCalculated,
+    saveConfiguration, hasCalculatedBill, isReady, markBillCalculated, monthlyEstimate,
   } = useUsage();
   const { t } = useLanguage();
   const billSummary = useMemo(() => summarizeUsageBill(getUsage), [getUsage]);
@@ -93,7 +93,7 @@ export default function Calculate() {
   }, [devices]);
 
   // ✅ FIX: pass getUsage instead of devices
-     const runForecast = useCallback((shouldSaveToday = false, estimate, configuredDevices = devices) => {
+  const runForecast = useCallback((shouldSaveToday = false, estimate, configuredDevices = devices) => {
     const forecast = getForecast(estimate, configuredDevices);
 
     setCurrentUnits(forecast.currentDailyUnits);
@@ -116,6 +116,14 @@ export default function Calculate() {
       saveDailyRecord(forecast.currentDailyUnits, forecast.currentDailyCost);
     }
   }, [getForecast, devices, saveDailyRecord]);
+
+  // Restore the most recently saved server estimate after app launch or login.
+  // Previously these display states were updated only after pressing Calculate Bill.
+  useEffect(() => {
+    if (isReady && monthlyEstimate) {
+      runForecast(false, monthlyEstimate, devices);
+    }
+  }, [devices, isReady, monthlyEstimate, runForecast]);
 
   const handleCalculatePress = async () => {
     try {
