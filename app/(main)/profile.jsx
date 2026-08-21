@@ -188,8 +188,8 @@ export default function Profile() {
     const name = editName.trim();
     const phoneNumber = editNumber.trim();
 
-    if (!name || !phoneNumber) {
-      Alert.alert('Missing information', 'Please enter your name and phone number.');
+    if (!name) {
+      Alert.alert('Missing information', 'Please enter your name.');
       return;
     }
 
@@ -207,7 +207,7 @@ export default function Profile() {
         `${API_BASE_URL}/users/profile`,
         {
           name,
-          phoneNumber,
+          ...(phoneNumber ? { phoneNumber } : {}),
           email: editGmail.trim(),
           ...(imageDataUrl ? { profileImage: imageDataUrl } : {}),
         },

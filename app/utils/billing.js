@@ -25,7 +25,9 @@ export const parseTimeToHours = (timeStr = '') => {
 };
 
 export const calculateMeterBill = (totalUnits) => {
-  let remaining = Math.max(Number(totalUnits) || 0, 0);
+  // Bill the same whole-unit value that is displayed to the user, matching
+  // the YESC calculator's unit input.
+  let remaining = Math.round(Math.max(Number(totalUnits) || 0, 0));
   let totalCost = 0;
 
   for (const tier of RATES) {
@@ -55,6 +57,7 @@ export const buildUsageBillItems = (getUsage) => {
           id: spec.id,
           name: spec.name,
           watt: spec.watt,
+          hours,
           dailyUnits,
           monthlyUnits,
           dailyCost: calculateMeterBill(dailyUnits),
@@ -93,6 +96,21 @@ export const formatUnits = (units) => {
 
 export const formatCost = (cost) => Math.round(Number(cost) || 0).toLocaleString();
 
+const formatRecommendationTime = (totalMinutes) => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours} hr ${minutes} min`;
+  }
+
+  if (hours > 0) {
+    return `${hours} hr`;
+  }
+
+  return `${minutes} min`;
+};
+
 export const generateRecommendation = (devices = []) => {
   if (!Array.isArray(devices) || devices.length === 0) {
     return 'Add your device usage to get energy-saving tips.';
@@ -122,13 +140,18 @@ export const generateDetailedRecommendations = (getUsage, dailyRecords = [], mon
     .filter((item) => item.monthlyCost > 0)
     .sort((a, b) => b.monthlyCost - a.monthlyCost)
     .slice(0, 3)
-    .map((item) => ({
-      id: item.id,
-      name: item.name || 'Device',
-      iconType: '',
-      recommendation: 'Reduce daily use of this device to lower your monthly bill.',
-      savings: Math.max(1, Math.round(item.monthlyCost * 0.1)),
-    }));
+    .map((item) => {
+      const reductionMinutes = Math.round(item.hours * 0.1 * 60);
+      const reductionTime = formatRecommendationTime(reductionMinutes);
+
+      return {
+        id: item.id,
+        name: item.name || 'Device',
+        iconType: '',
+        recommendation: `Reduce ${item.name || 'this device'} usage by ${reductionTime}/day.`,
+        savings: Math.max(1, Math.round(item.monthlyCost * 0.1)),
+      };
+    });
 
   return { isOverBudget: true, recommendations, targetSavings };
 };

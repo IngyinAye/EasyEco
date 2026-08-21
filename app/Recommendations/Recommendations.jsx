@@ -22,6 +22,21 @@ const ICON_MAP = {
   vacuum: require('../../assets/Vacuum_cleaner.png'),
 };
 
+const CATEGORY_ICON_MAP = {
+  refrigerator: 'fridge',
+  ac: 'ac',
+  washing: 'washing',
+  bulb: 'bulb',
+  fan: 'fan',
+  tv: 'tv',
+  iron: 'iron',
+  microwave: 'microwave',
+  rice: 'rice',
+  pot: 'pot',
+  kettle: 'kettle',
+  vacuum: 'vacuum',
+};
+
 const BackIcon = () => (
   <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
     <Path d="M15 18L9 12L15 6" stroke="#1F2937" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -31,11 +46,23 @@ const BackIcon = () => (
 export default function Recommendations() {
   const router = useRouter();
   // ✅ FIX: get getUsage from context
-  const { getUsage, monthlyBudget, dailyRecords } = useUsage();
+  const {
+    devices,
+    monthlyBudget,
+    getUsage,
+    getForecast,
+  } = useUsage();
 
   // ✅ FIX: pass getUsage as the first argument
-  const { isOverBudget, recommendations, targetSavings } =
-    generateDetailedRecommendations(getUsage, dailyRecords, monthlyBudget);
+  const forecast = getForecast();
+  const isLoading = false;
+  const recommendationResult = generateDetailedRecommendations(getUsage, [], monthlyBudget);
+  const isOverBudget = forecast.isOverBudget;
+  const overBudgetAmount = forecast.overBudgetAmount;
+  const recommendationItems = recommendationResult.recommendations.map((item) => ({
+    ...item,
+    category: devices.find((device) => device.id === item.id)?.categoryId,
+  }));
 
   const renderIcon = (type) => {
     const src = ICON_MAP[type];
@@ -60,10 +87,16 @@ export default function Recommendations() {
       </View>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        {isLoading && (
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>Loading recommendations…</Text>
+          </View>
+        )}
+
         {isOverBudget && (
           <View style={styles.banner}>
             <Text style={styles.bannerText}>
-              You are <Text style={styles.bannerAmount}>{targetSavings.toLocaleString()} MMK</Text> over budget.
+              You are <Text style={styles.bannerAmount}>{overBudgetAmount.toLocaleString()} MMK</Text> over budget.
             </Text>
             <Text style={styles.bannerSub}>Follow these tips to save money:</Text>
           </View>
@@ -75,14 +108,16 @@ export default function Recommendations() {
           </View>
         )}
 
-        {recommendations.map((item) => (
+        {recommendationItems.map((item) => (
           <View key={item.id} style={styles.card}>
             <View style={styles.cardTop}>
-              {renderIcon(item.iconType)}
+              {renderIcon(CATEGORY_ICON_MAP[item.category] || item.iconType || 'bulb')}
               <Text style={styles.cardTitle}>{item.name}</Text>
             </View>
             <View style={styles.divider} />
-            <Text style={styles.cardBody}>{item.recommendation}</Text>
+            <Text style={styles.cardBody}>
+              {item.recommendation}
+            </Text>
             <Text style={styles.cardSave}>
               Save <Text style={styles.saveAmount}>- {item.savings.toLocaleString()} MMK</Text> / month
             </Text>

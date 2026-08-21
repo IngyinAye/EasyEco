@@ -91,11 +91,19 @@ function buildMonthlyEstimate({ month, snapshots = [] }) {
     a.effectiveDate.localeCompare(b.effectiveDate)
     || new Date(a.savedAt).getTime() - new Date(b.savedAt).getTime()
   ));
+  const firstEntryDate = orderedSnapshots[0]?.effectiveDate || null;
   const applianceTotals = new Map();
 
   const timeline = dates.map((date) => {
-    const snapshot = findActiveSnapshot(orderedSnapshots, date);
-    const daily = buildDailyBreakdown(snapshot?.appliances || []);
+  if (!firstEntryDate || date < firstEntryDate) {
+    return {
+      date,
+      dailyUnits: 0,
+    };
+  }
+
+  const snapshot = findActiveSnapshot(orderedSnapshots, date);
+  const daily = buildDailyBreakdown(snapshot?.appliances || []);
 
     daily.items.forEach((item) => {
       const key = item.applianceId || `${item.category}:${item.name}`;
@@ -127,8 +135,8 @@ function buildMonthlyEstimate({ month, snapshots = [] }) {
   return {
     estimatedPeriod: {
       month,
-      startDate: dates[0],
-      endDate: dates[dates.length - 1],
+       startDate: firstEntryDate || dates[0],
+       endDate: dates[dates.length - 1],
     },
     totalUnits: round(totalUnits),
     totalBill: round(calculateTieredBill(totalUnits), 2),

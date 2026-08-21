@@ -4,9 +4,33 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../config/api';
 import { getToken, getUser } from '../utils/authStorage';
+import { summarizeUsageBill } from '../utils/billing';
 
 const UsageContext = createContext();
 const DEFAULT_TIMEZONE = 'Asia/Rangoon';
+const MONTHLY_BUDGET_KEY_PREFIX = 'easyeco_monthly_budget';
+
+async function getMonthlyBudgetStorageKey() {
+  const user = await getUser();
+  const userId = user?._id || user?.id;
+
+  return userId ? `${MONTHLY_BUDGET_KEY_PREFIX}:${userId}` : null;
+}
+
+function getRangoonDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  return Object.fromEntries(
+    parts
+      .filter(({ type }) => type !== 'literal')
+      .map(({ type, value }) => [type, value])
+  );
+}
 
 const createId = () => `appliance-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -56,29 +80,62 @@ function usageToDevice(usage) {
 }
 
 function currentMonth() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: DEFAULT_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-  }).format(new Date()).replace('/', '-');
+  const { year, month } = getRangoonDateParts();
+  return `${year}-${month}`;
+}
+
+function currentDate() {
+  const { year, month, day } = getRangoonDateParts();
+  return `${year}-${month}-${day}`;
+}
+
+function calculateConfiguredMonthlyCost(devices = []) {
+  const devicesByCategory = devices.reduce((groups, device) => ({
+    ...groups,
+    [device.categoryId]: [...(groups[device.categoryId] || []), device],
+  }), {});
+
+  return summarizeUsageBill((category) => devicesByCategory[category] || []).totalMonthlyCost;
 }
 
 export function UsageProvider({ children }) {
   const [monthlyBudget, setMonthlyBudgetState] = useState(100);
   const [devices, setDevices] = useState([]);
   const [monthlyEstimate, setMonthlyEstimate] = useState(null);
+  const [hasCalculatedBill, setHasCalculatedBill] = useState(false);
+  const [latestConfiguration, setLatestConfiguration] = useState([]);
+  const [recommendations, setRecommendations] = useState(null);
   const [isReady, setIsReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem('monthlyBudget')
-      .then((value) => value && setMonthlyBudgetState(JSON.parse(value)))
-      .catch(() => undefined);
+    let isActive = true;
+
+    const loadSavedBudget = async () => {
+      try {
+        const key = await getMonthlyBudgetStorageKey();
+        const value = key ? await AsyncStorage.getItem(key) : null;
+
+        if (isActive && value) {
+          setMonthlyBudgetState(JSON.parse(value));
+        }
+      } catch {
+      }
+    };
+
+    loadSavedBudget();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   const setMonthlyBudget = useCallback((value) => {
     setMonthlyBudgetState(value);
-    AsyncStorage.setItem('monthlyBudget', JSON.stringify(value)).catch(() => undefined);
+    getMonthlyBudgetStorageKey()
+      .then((key) => key && AsyncStorage.setItem(key, JSON.stringify(value)))
+      .catch(() => undefined);
   }, []);
 
   const getAuthConfig = useCallback(async () => {
@@ -102,18 +159,75 @@ export function UsageProvider({ children }) {
   }, [getAuthConfig]);
 
   const fetchMonthlyEstimate = useCallback(async (month = currentMonth()) => {
-    const config = await getAuthConfig();
-    const response = await axios.get(`${API_BASE_URL}/usage-snapshots/estimate`, {
-      ...config,
-      params: { month, timezone: DEFAULT_TIMEZONE },
-    });
-    setMonthlyEstimate(response.data);
-    return response.data;
+    setIsLoading(true);
+    try {
+      const config = await getAuthConfig();
+      const response = await axios.get(`${API_BASE_URL}/usage-snapshots/estimate`, {
+        ...config,
+        params: { month, timezone: DEFAULT_TIMEZONE },
+      });
+      setMonthlyEstimate(response.data);
+      const savedBudget = Number(response.data.monthlyBudget) || 0;
+      setMonthlyBudgetState(savedBudget);
+      const budgetKey = await getMonthlyBudgetStorageKey();
+      if (budgetKey) {
+        await AsyncStorage.setItem(budgetKey, JSON.stringify(savedBudget));
+      }
+      setLatestConfiguration(response.data.latestConfiguration || []);
+      const latestAppliances = Array.isArray(response.data.latestConfiguration)
+        ? response.data.latestConfiguration
+        : [];
+      const restoredDevices = latestAppliances.map(snapshotApplianceToDevice);
+      setDevices(restoredDevices);
+      setHasCalculatedBill(restoredDevices.length > 0);
+      return response.data;
+    } finally {
+      setIsLoading(false);
+    }
   }, [getAuthConfig]);
 
-  const refreshUsage = useCallback(async () => {
+  const fetchRecommendations = useCallback(async (month = currentMonth()) => {
+    setIsLoading(true);
     try {
-      await Promise.all([fetchUsage(), fetchMonthlyEstimate()]);
+      const config = await getAuthConfig();
+      const response = await axios.get(`${API_BASE_URL}/usage-snapshots/recommendations`, {
+        ...config,
+        params: { month },
+      });
+      setRecommendations(response.data);
+      return response.data;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getAuthConfig]);
+
+  const saveMonthlyBudget = useCallback(async (value) => {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error('Monthly budget must be a non-negative number.');
+    }
+
+    const config = await getAuthConfig();
+    const response = await axios.post(
+      `${API_BASE_URL}/users/budget`,
+      { monthlyBudget: value },
+      config
+    );
+    const savedBudget = Number(response.data.monthlyBudget) || 0;
+
+    setMonthlyBudgetState(savedBudget);
+    const budgetKey = await getMonthlyBudgetStorageKey();
+    if (budgetKey) {
+      await AsyncStorage.setItem(budgetKey, JSON.stringify(savedBudget));
+    }
+    await fetchMonthlyEstimate();
+
+    return savedBudget;
+  }, [fetchMonthlyEstimate, getAuthConfig]);
+
+  const refreshUsage = useCallback(async () => {
+    setIsReady(false);
+    try {
+      await fetchMonthlyEstimate();
     } catch (error) {
       if (error.response?.status === 401) {
         setDevices([]);
@@ -123,7 +237,7 @@ export function UsageProvider({ children }) {
     } finally {
       setIsReady(true);
     }
-  }, [fetchMonthlyEstimate, fetchUsage]);
+  }, [fetchMonthlyEstimate]);
 
   useEffect(() => {
     refreshUsage().catch(() => undefined);
@@ -140,12 +254,11 @@ export function UsageProvider({ children }) {
         ...config,
         headers: {
           ...config.headers,
-          // Prevent a network retry from creating a second history record.
           'Idempotency-Key': `snapshot-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         },
       });
       setDevices(nextDevices);
-      await fetchMonthlyEstimate();
+      return await fetchMonthlyEstimate();
     } finally {
       setIsSaving(false);
     }
@@ -212,28 +325,36 @@ export function UsageProvider({ children }) {
   const getAllDevices = useCallback(() => devices, [devices]);
   const getDeviceById = useCallback((id) => devices.find((device) => device.id === id), [devices]);
 
-  const getForecast = useCallback(() => {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE }).format(new Date());
-    const todayEntry = monthlyEstimate?.timeline?.find((entry) => entry.date === today);
-    const estimatedUnits = monthlyEstimate?.totalUnits || 0;
-    const estimatedCost = monthlyEstimate?.totalBill || 0;
+  const getForecast = useCallback((estimate = monthlyEstimate, configuredDevices = devices) => {
+    const today = currentDate();
+    const todayEntry = estimate?.timeline?.find((entry) => entry.date === today);
+    const currentUsageUnits =
+      estimate?.currentUsageUnits ?? todayEntry?.dailyUnits ?? 0;
+    const currentBill = estimate?.currentBill ?? 0;
+    const estimatedUnits =
+      estimate?.projectedUnits ?? estimate?.totalUnits ?? 0;
+    const estimatedCost = calculateConfiguredMonthlyCost(configuredDevices);
     const isOverBudget = estimatedCost > monthlyBudget;
     return {
-      currentDailyUnits: todayEntry?.dailyUnits || 0,
-      currentDailyCost: 0,
+      currentDailyUnits: currentUsageUnits,
+      currentDailyCost: currentBill,
       estimatedUnits,
       estimatedCost,
       isOverBudget,
       overBudgetAmount: isOverBudget ? estimatedCost - monthlyBudget : 0,
-      timeline: monthlyEstimate?.timeline || [],
-      estimatedPeriod: monthlyEstimate?.estimatedPeriod || null,
+      timeline: estimate?.timeline || [],
+      estimatedPeriod: estimate?.estimatedPeriod || null,
     };
-  }, [monthlyBudget, monthlyEstimate]);
+  }, [devices, monthlyBudget, monthlyEstimate]);
 
   const clearAllUsage = useCallback(() => {
     // Used on logout: it clears only device-local state, never historical data.
     setDevices([]);
     setMonthlyEstimate(null);
+    setHasCalculatedBill(false);
+    setLatestConfiguration([]);
+    setRecommendations(null);
+    setMonthlyBudgetState(0);
   }, []);
 
   return (
@@ -242,13 +363,18 @@ export function UsageProvider({ children }) {
       devices,
       monthlyBudget,
       monthlyEstimate,
+      hasCalculatedBill,
+      latestConfiguration,
+      recommendations,
       isReady,
       isSaving,
+      isLoading,
       addUsage,
       removeUsage,
       getUsage,
       fetchUsage: refreshUsage,
       fetchMonthlyEstimate,
+      fetchRecommendations,
       refreshUsage,
       clearAllUsage,
       getAllDevices,
@@ -257,7 +383,9 @@ export function UsageProvider({ children }) {
       updateDevice,
       deleteDevice,
       saveConfiguration,
+      markBillCalculated: () => setHasCalculatedBill(true),
       setMonthlyBudget,
+      saveMonthlyBudget,
       getForecast,
       // Kept temporarily so existing presentation components do not crash.
       dailyRecords: [],

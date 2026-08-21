@@ -9,7 +9,6 @@ import React, { useMemo } from 'react';
 import Svg, { Circle, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUsage } from '../Usage/UsageContext';
-import { summarizeUsageBill } from '../utils/billing';
 
 const CHART_HEIGHT = 240;
 const LABEL_HEIGHT = 40;
@@ -21,9 +20,8 @@ const Y_TICKS = [100, 80, 60, 40, 20, 0];
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const {
-    getUsage,
-    dailyRecords,
     monthlyBudget,
+    monthlyEstimate,
     isReady,
     getForecast,
   } = useUsage();
@@ -35,46 +33,37 @@ export default function Dashboard() {
   const forecast = getForecast();
 
   const estimatedCost = forecast.estimatedCost;
+  const apiBudget = monthlyEstimate?.monthlyBudget ?? monthlyBudget;
 
-  const rawPercentage =
-    monthlyBudget > 0
-      ? Math.round((estimatedCost / monthlyBudget) * 100)
-      : 0;
+  const localPercent = apiBudget > 0
+    ? Math.round((estimatedCost / apiBudget) * 100)
+    : 0;
 
-  const displayPercentage = Math.min(rawPercentage, 100);
-  const isOverBudget = rawPercentage > 100;
-  const remaining = Math.max(monthlyBudget - estimatedCost, 0);
+  const displayPercentage = Math.min(localPercent, 100);
+  const isOverBudget = estimatedCost > apiBudget;
+
+  const remaining = Math.max(apiBudget - estimatedCost, 0);
 
   /* ═══════════════════════════════════════
      CONSUMPTION BREAKDOWN
   ═══════════════════════════════════════ */
 
   const breakdown = useMemo(() => {
-    const { allItems } = summarizeUsageBill(getUsage);
+    const items = monthlyEstimate?.applianceConsumptionBreakdown;
 
-    const items = allItems
-      .filter((d) => Number(d.monthlyUnits) > 0)
-      .map((d) => ({
-        id: d.id,
-        name: d.name,
-        monthlyUnits: Number(d.monthlyUnits) || 0,
-      }));
-
-    const total = items.reduce(
-      (sum, item) => sum + item.monthlyUnits,
-      0
-    );
+    if (!Array.isArray(items)) {
+      return [];
+    }
 
     return items
-      .map((item) => ({
-        ...item,
-        percentage:
-          total > 0
-            ? Math.round((item.monthlyUnits / total) * 100)
-            : 0,
+      .map((item, index) => ({
+        id: `${item.name}-${index}`,
+        name: item.name,
+        monthlyUnits: Number(item.monthlyKwh) || 0,
+        percentage: Number(item.percentage) || 0,
       }))
       .sort((a, b) => b.percentage - a.percentage);
-  }, [getUsage]);
+  }, [monthlyEstimate]);
 
   /* Chart uses the same percentage as the Bottom Card */
   const chartData = breakdown;
@@ -197,7 +186,7 @@ export default function Dashboard() {
               <Text style={styles.rowSub}>Monthly budget</Text>
             </View>
             <Text style={styles.rowValue}>
-              {monthlyBudget.toLocaleString()} MMK
+              {apiBudget.toLocaleString()} MMK
             </Text>
           </View>
 

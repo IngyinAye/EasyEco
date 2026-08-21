@@ -8,7 +8,7 @@ import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
 import { useLanguage } from './context/LanguageContext';
 
 // ===== COMPONENT =====
-export default function UsageDetail({ visible, onClose, type = 'current', estimatedCost }) {
+export default function UsageDetail({ visible, onClose, type = 'current' }) {
   const { getUsage } = useUsage();
   const { t } = useLanguage();
   const {
@@ -74,9 +74,9 @@ export default function UsageDetail({ visible, onClose, type = 'current', estima
           </View>
 
           <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t('estimatedTotal')}</Text>
             <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} {t('units')}</Text>
             <Text style={styles.summaryCost}>{formatCost(totalMonthlyCost)} MMK</Text>
-            <Text style={styles.summaryCost}>{formatCost(estimatedCost ?? totalMonthlyCost)} MMK</Text>
           </View>
         </View>
       </View>

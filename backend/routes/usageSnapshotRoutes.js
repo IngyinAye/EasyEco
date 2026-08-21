@@ -174,12 +174,13 @@ router.post('/', async (req, res) => {
 router.get('/estimate', async (req, res) => {
   try {
     const { month } = req.query;
-
-    // This validates the month and provides the last date for the snapshot query.
     const dates = getMonthDates(month);
     const snapshots = await UsageSnapshot.find({
       userId: req.usageUserKey,
-      effectiveDate: { $lte: dates[dates.length - 1] },
+      effectiveDate: {
+      $gte: dates[0],
+      $lte: dates[dates.length - 1],
+}
     })
       .sort({ effectiveDate: 1, savedAt: 1 })
       .lean();
@@ -260,7 +261,10 @@ router.get('/recommendations', async (req, res) => {
     const dates = getMonthDates(month);
     const snapshots = await UsageSnapshot.find({
       userId: req.usageUserKey,
-      effectiveDate: { $lte: dates[dates.length - 1] },
+      effectiveDate: {
+      $gte: dates[0],
+      $lte: dates[dates.length - 1],
+},
     })
       .sort({ effectiveDate: 1, savedAt: 1 })
       .lean();

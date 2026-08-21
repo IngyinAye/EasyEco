@@ -1,9 +1,9 @@
 import {
-  StyleSheet, Text, View, TouchableOpacity, Image,
+  Alert, StyleSheet, Text, View, TouchableOpacity, Image,
   ScrollView, Modal, TextInput, Pressable, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUsage } from '../Usage/UsageContext';
@@ -11,6 +11,7 @@ import {
   generateRecommendation,
   formatUnits,
   formatCost,
+  summarizeUsageBill,
 } from '../utils/billing';
 import { useLanguage } from '../context/LanguageContext';
 import UsageDetail from '../UsageDetail';
@@ -59,9 +60,12 @@ export default function Calculate() {
   const cardHeight = Math.max(150, Math.min(screenHeight * 0.21, 220));
   const {
     devices, monthlyBudget, dailyRecords,
-    getUsage, getForecast, saveDailyRecord, setMonthlyBudget,
+    getUsage, getForecast, saveDailyRecord, saveMonthlyBudget,
+    saveConfiguration, hasCalculatedBill, isReady, markBillCalculated,
   } = useUsage();
   const { t } = useLanguage();
+  const billSummary = useMemo(() => summarizeUsageBill(getUsage), [getUsage]);
+  const billIsAvailable = isReady && hasCalculatedBill;
 
   const [activePage, setActivePage] = useState(0);
   const scrollViewRef = useRef(null);
@@ -84,9 +88,13 @@ export default function Calculate() {
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(monthlyBudget));
 
+  useEffect(() => {
+    setRecommendationText(devices.length > 0 ? generateRecommendation(devices) : '');
+  }, [devices]);
+
   // ✅ FIX: pass getUsage instead of devices
-     const runForecast = useCallback((shouldSaveToday = false) => {
-    const forecast = getForecast();
+     const runForecast = useCallback((shouldSaveToday = false, estimate, configuredDevices = devices) => {
+    const forecast = getForecast(estimate, configuredDevices);
 
     setCurrentUnits(forecast.currentDailyUnits);
     setCurrentCost(forecast.currentDailyCost);
@@ -109,9 +117,18 @@ export default function Calculate() {
     }
   }, [getForecast, devices, saveDailyRecord]);
 
-  const handleCalculatePress = () => {
-    runForecast(false);
-    setResultModalVisible(true);
+  const handleCalculatePress = async () => {
+    try {
+      const estimate = await saveConfiguration(devices);
+      runForecast(false, estimate, devices);
+      markBillCalculated();
+      setResultModalVisible(true);
+    } catch (error) {
+      Alert.alert(
+        'Could not calculate bill',
+        error.response?.data?.message || 'Please check your connection and try again.'
+      );
+    }
   };
 
   const handleOpenBudgetModal = () => {
@@ -119,10 +136,22 @@ export default function Calculate() {
     setBudgetModalVisible(true);
   };
 
-  const handleSaveBudget = () => {
+  const handleSaveBudget = async () => {
     const val = parseFloat(budgetInput);
-    if (!isNaN(val) && val >= 0) setMonthlyBudget(val);
-    setBudgetModalVisible(false);
+    if (Number.isNaN(val) || val < 0) {
+      Alert.alert('Invalid budget', 'Enter a non-negative budget amount.');
+      return;
+    }
+
+    try {
+      await saveMonthlyBudget(val);
+      setBudgetModalVisible(false);
+    } catch (error) {
+      Alert.alert(
+        'Could not save budget',
+        error.response?.data?.message || error.message || 'Please try again.'
+      );
+    }
   };
 
   const handleDotPress = (pageIndex) => {
@@ -192,10 +221,9 @@ export default function Calculate() {
                 visible={usageModalVisible}
                 onClose={handleCloseUsageModal}
                 type="current"
-                currentUnits={currentUnits}
-                currentCost={currentCost}
-                estimatedUnits={estimatedUnits}
-                estimatedCost={estimatedCost}
+                currentUnits={billIsAvailable ? billSummary.totalDailyUnits : 0}
+                currentCost={billIsAvailable ? billSummary.totalDailyCost : 0}
+                estimatedUnits={billIsAvailable ? billSummary.totalMonthlyUnits : 0}
               />
             </View>
 
@@ -206,13 +234,13 @@ export default function Calculate() {
             </View>
             <View style={styles.tableRow}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
-              <Text style={styles.rowValue}>{formatUnits(currentUnits)} {t('units')}</Text>
-              <Text style={styles.rowValue}>{formatCost(currentCost)} MMK</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatUnits(billIsAvailable ? billSummary.totalDailyUnits : 0)} ${t('units')}` : 'Loading...'}</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatCost(billIsAvailable ? billSummary.totalDailyCost : 0)} MMK` : 'Loading...'}</Text>
             </View>
             <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
-              <Text style={styles.rowValue}>{formatUnits(estimatedUnits)} {t('units')}</Text>
-              <Text style={styles.rowValue}>{formatCost(estimatedCost)} MMK</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatUnits(billIsAvailable ? billSummary.totalMonthlyUnits : 0)} ${t('units')}` : 'Loading...'}</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatCost(billIsAvailable ? billSummary.totalMonthlyCost : 0)} MMK` : 'Loading...'}</Text>
             </View>
           </View>
         </TouchableOpacity>
