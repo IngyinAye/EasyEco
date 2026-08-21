@@ -33,22 +33,22 @@ const ICON_MAP = {
 
 const PAGES_DATA = [
   [
-    { id: 1, title: 'Refrigerator', iconType: 'fridge', categoryId: 'refrigerator' },
-    { id: 2, title: 'Air Conditioner', iconType: 'ac', categoryId: 'ac' },
-    { id: 3, title: 'Washing Machine', iconType: 'washing', categoryId: 'washing' },
-    { id: 4, title: 'Electric bulb', iconType: 'bulb', categoryId: 'bulb' },
+    { id: 1, titleKey: 'refrigerator', iconType: 'fridge', categoryId: 'refrigerator' },
+    { id: 2, titleKey: 'airConditioner', iconType: 'ac', categoryId: 'ac' },
+    { id: 3, titleKey: 'washingMachine', iconType: 'washing', categoryId: 'washing' },
+    { id: 4, titleKey: 'electricBulb', iconType: 'bulb', categoryId: 'bulb' },
   ],
   [
-    { id: 5, title: 'Electric Fan', iconType: 'fan', categoryId: 'fan' },
-    { id: 6, title: 'Television', iconType: 'tv', categoryId: 'tv' },
-    { id: 7, title: 'Electric Iron', iconType: 'iron', categoryId: 'iron' },
-    { id: 8, title: 'Microwave Oven', iconType: 'microwave', categoryId: 'microwave' },
+    { id: 5, titleKey: 'electricFan', iconType: 'fan', categoryId: 'fan' },
+    { id: 6, titleKey: 'television', iconType: 'tv', categoryId: 'tv' },
+    { id: 7, titleKey: 'electricIron', iconType: 'iron', categoryId: 'iron' },
+    { id: 8, titleKey: 'microwaveOven', iconType: 'microwave', categoryId: 'microwave' },
   ],
   [
-    { id: 9, title: 'Rice Cooker', iconType: 'rice', categoryId: 'rice' },
-    { id: 10, title: 'Cooking Pot', iconType: 'pot', categoryId: 'pot' },
-    { id: 11, title: 'Electric Kettle', iconType: 'kettle', categoryId: 'kettle' },
-    { id: 12, title: 'Vacuum Cleaner', iconType: 'vacuum', categoryId: 'vacuum' },
+    { id: 9, titleKey: 'riceCooker', iconType: 'rice', categoryId: 'rice' },
+    { id: 10, titleKey: 'cookingPot', iconType: 'pot', categoryId: 'pot' },
+    { id: 11, titleKey: 'electricKettle', iconType: 'kettle', categoryId: 'kettle' },
+    { id: 12, titleKey: 'vacuumCleaner', iconType: 'vacuum', categoryId: 'vacuum' },
   ]
 ];
 
@@ -63,7 +63,7 @@ export default function Calculate() {
     getUsage, getForecast, saveDailyRecord, saveMonthlyBudget,
     saveConfiguration, hasCalculatedBill, isReady, markBillCalculated, monthlyEstimate,
   } = useUsage();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const billSummary = useMemo(() => summarizeUsageBill(getUsage), [getUsage]);
   const billIsAvailable = isReady && hasCalculatedBill;
 
@@ -190,6 +190,16 @@ export default function Calculate() {
     });
   };
 
+  // Keep the saved values in English for bill calculations; translate only the UI text.
+  const localizeSpec = (text = '') => {
+    if (language !== 'my') return text;
+
+    return String(text)
+      .replace(/\bWatt\b/gi, t('watt'))
+      .replace(/\bhr\b/gi, t('hour'))
+      .replace(/\bmin\b/gi, t('minute'));
+  };
+
   const renderCardContent = (item) => {
     const specs = getUsage(item.categoryId);
     if (!specs || specs.length === 0) {
@@ -199,8 +209,8 @@ export default function Calculate() {
       <View style={styles.specsContainer}>
         {specs.slice(0, 2).map((spec, i) => (
           <View key={i} style={styles.specRow}>
-            <Text style={styles.specText}>{spec.watt}</Text>
-            <Text style={styles.specText}>{spec.time}</Text>
+            <Text style={styles.specText}>{localizeSpec(spec.watt)}</Text>
+            <Text style={styles.specText}>{localizeSpec(spec.time)}</Text>
           </View>
         ))}
         {specs.length > 2 && <Text style={styles.moreText}>...</Text>}
@@ -295,7 +305,7 @@ export default function Calculate() {
                     >
                       <View>
                         <View style={styles.iconCircle}>{renderFigmaIcon(item.iconType)}</View>
-                        <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+                        <Text style={styles.cardTitle} numberOfLines={1}>{t(item.titleKey)}</Text>
                         <View style={styles.underline} />
                       </View>
                       {renderCardContent(item)}
