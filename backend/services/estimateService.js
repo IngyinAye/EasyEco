@@ -183,7 +183,34 @@ function buildRecommendations({ month, snapshots = [], monthlyBudget }) {
   const billFor = (candidateSnapshots) => (
     buildMonthlyEstimate({ month, snapshots: candidateSnapshots }).totalBill
   );
-  const reduceDevice = (candidateSnapshots, applianceId, minutesToReduce) => (
+  // Every configured device receives the same percentage time reduction.
+  // This prevents a single high-watt appliance from receiving the entire
+  // recommendation while the other configured appliances receive none.
+  const candidates = devices
+    .map((device) => ({
+      ...device,
+      currentMinutesPerDay: Number(device.minutesPerDay) || 0,
+    }))
+    .filter((device) => device.currentMinutesPerDay > 0);
+  const candidateIds = new Set(candidates.map((device) => device.applianceId));
+
+  const reduceAllDevices = (candidateSnapshots, reductionRatio) => (
+    candidateSnapshots.map((snapshot) => ({
+      ...snapshot,
+      appliances: (snapshot.appliances || []).map((appliance) => (
+        candidateIds.has(appliance.applianceId)
+          ? {
+              ...appliance,
+              minutesPerDay: Math.max(
+                (Number(appliance.minutesPerDay) || 0) * (1 - reductionRatio),
+                0
+              ),
+            }
+          : { ...appliance }
+      )),
+    }))
+  );
+  const reduceDeviceByRatio = (candidateSnapshots, applianceId, reductionRatio) => (
     candidateSnapshots.map((snapshot) => ({
       ...snapshot,
       appliances: (snapshot.appliances || []).map((appliance) => (
@@ -191,7 +218,7 @@ function buildRecommendations({ month, snapshots = [], monthlyBudget }) {
           ? {
               ...appliance,
               minutesPerDay: Math.max(
-                (Number(appliance.minutesPerDay) || 0) - minutesToReduce,
+                (Number(appliance.minutesPerDay) || 0) * (1 - reductionRatio),
                 0
               ),
             }
@@ -200,70 +227,34 @@ function buildRecommendations({ month, snapshots = [], monthlyBudget }) {
     }))
   );
 
-  // Rank appliances by their maximum possible saving. Then reduce them one at
-  // a time so every card reflects the bill after the preceding card's change.
-  const candidates = devices
-    .map((device) => {
-      const currentMinutesPerDay = Number(device.minutesPerDay) || 0;
-      const fullyReducedSnapshots = reduceDevice(
-        snapshots,
-        device.applianceId,
-        currentMinutesPerDay
-      );
+  // Find the common percentage required for the new total bill to reach the
+  // user's budget. A binary search keeps the result accurate for any number
+  // of configured devices.
+  let low = 0;
+  let high = 1;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const middle = (low + high) / 2;
+    const savingAtMiddle = totalBill - billFor(reduceAllDevices(snapshots, middle));
 
-      return {
-        ...device,
-        currentMinutesPerDay,
-        maximumSavings: Math.max(totalBill - billFor(fullyReducedSnapshots), 0),
-      };
-    })
-    .filter((device) => device.currentMinutesPerDay > 0 && device.maximumSavings > 0)
-    .sort((a, b) => b.maximumSavings - a.maximumSavings)
-    .slice(0, 3);
+    if (savingAtMiddle >= overBudgetAmount) high = middle;
+    else low = middle;
+  }
 
+  const reductionRatio = high;
   let workingSnapshots = snapshots;
-  let remainingSavings = overBudgetAmount;
-  const recommendations = [];
-
-  for (const device of candidates) {
-    if (remainingSavings <= 0) break;
-
+  const rawRecommendations = candidates.map((device) => {
     const billBefore = billFor(workingSnapshots);
-    const fullyReducedSnapshots = reduceDevice(
+    const minutesToReduce = device.currentMinutesPerDay * reductionRatio;
+    const nextSnapshots = reduceDeviceByRatio(
       workingSnapshots,
       device.applianceId,
-      device.currentMinutesPerDay
-    );
-    const maximumSavings = Math.max(billBefore - billFor(fullyReducedSnapshots), 0);
-    const targetSavings = Math.min(remainingSavings, maximumSavings);
-
-    // Find the smallest daily reduction that meets this card's remaining
-    // saving target. Fractional minutes keep decimal-unit bills accurate.
-    let low = 0;
-    let high = device.currentMinutesPerDay;
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      const middle = (low + high) / 2;
-      const middleBill = billFor(reduceDevice(
-        workingSnapshots,
-        device.applianceId,
-        middle
-      ));
-
-      if (billBefore - middleBill >= targetSavings) high = middle;
-      else low = middle;
-    }
-
-    const minutesToReduce = high;
-    const nextSnapshots = reduceDevice(
-      workingSnapshots,
-      device.applianceId,
-      minutesToReduce
+      reductionRatio
     );
     const savings = Math.max(billBefore - billFor(nextSnapshots), 0);
 
-    if (savings <= 0) continue;
+    workingSnapshots = nextSnapshots;
 
-    recommendations.push({
+    return {
       applianceId: device.applianceId,
       name: device.name,
       category: device.category,
@@ -271,19 +262,38 @@ function buildRecommendations({ month, snapshots = [], monthlyBudget }) {
       suggestedMinutesPerDay: Math.max(device.currentMinutesPerDay - minutesToReduce, 0),
       reducedMinutesPerDay: minutesToReduce,
       reducedHoursPerDay: minutesToReduce / 60,
-      savings: round(savings, 2),
-    });
+      savings,
+    };
+  });
 
-    workingSnapshots = nextSnapshots;
-    remainingSavings = Math.max(remainingSavings - savings, 0);
+  // Currency is shown as whole MMK. Allocate the rounding remainder to the
+  // largest fractional savings so the displayed cards always sum exactly to
+  // the displayed over-budget amount.
+  const wholeOverBudgetAmount = Math.round(overBudgetAmount);
+  const wholeSavings = rawRecommendations.map((item) => Math.floor(item.savings));
+  let roundingRemainder = wholeOverBudgetAmount
+    - wholeSavings.reduce((sum, savings) => sum + savings, 0);
+  const fractionOrder = rawRecommendations
+    .map((item, index) => ({ index, fraction: item.savings - Math.floor(item.savings) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  for (const { index } of fractionOrder) {
+    if (roundingRemainder <= 0) break;
+    wholeSavings[index] += 1;
+    roundingRemainder -= 1;
   }
+
+  const recommendations = rawRecommendations.map((item, index) => ({
+    ...item,
+    savings: wholeSavings[index],
+  }));
 
   return {
     month,
     totalBill,
     monthlyBudget: budget,
     isOverBudget: true,
-    overBudgetAmount,
+    overBudgetAmount: wholeOverBudgetAmount,
     recommendations,
   };
 }
