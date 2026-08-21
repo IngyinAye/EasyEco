@@ -333,7 +333,8 @@ export function UsageProvider({ children }) {
     const currentBill = estimate?.currentBill ?? 0;
     const estimatedUnits =
       estimate?.projectedUnits ?? estimate?.totalUnits ?? 0;
-    const estimatedCost = calculateConfiguredMonthlyCost(configuredDevices);
+    const estimatedCost =
+      estimate?.totalBill ?? calculateConfiguredMonthlyCost(configuredDevices);
     const isOverBudget = estimatedCost > monthlyBudget;
     return {
       currentDailyUnits: currentUsageUnits,

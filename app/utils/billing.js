@@ -25,9 +25,8 @@ export const parseTimeToHours = (timeStr = '') => {
 };
 
 export const calculateMeterBill = (totalUnits) => {
-  // Bill the same whole-unit value that is displayed to the user, matching
-  // the YESC calculator's unit input.
-  let remaining = Math.round(Math.max(Number(totalUnits) || 0, 0));
+  // Preserve decimal consumption to match YESC's calculator.
+  let remaining = Math.max(Number(totalUnits) || 0, 0);
   let totalCost = 0;
 
   for (const tier of RATES) {
@@ -88,10 +87,11 @@ export const summarizeUsageBill = (getUsage) => {
 
 export const formatUnits = (units) => {
   const value = Number(units) || 0;
-  if (value > 0 && value < 1) {
-    return value.toFixed(2);
-  }
-  return Math.round(value).toString();
+  const rounded = Number(value.toFixed(1));
+
+  return Number.isInteger(rounded)
+    ? String(rounded)
+    : rounded.toFixed(1);
 };
 
 export const formatCost = (cost) => Math.round(Number(cost) || 0).toLocaleString();

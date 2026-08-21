@@ -186,7 +186,6 @@ export default function Profile() {
 
   const saveProfile = async () => {
     const name = editName.trim();
-    const phoneNumber = editNumber.trim();
 
     if (!name) {
       Alert.alert('Missing information', 'Please enter your name.');
@@ -207,8 +206,6 @@ export default function Profile() {
         `${API_BASE_URL}/users/profile`,
         {
           name,
-          ...(phoneNumber ? { phoneNumber } : {}),
-          email: editGmail.trim(),
           ...(imageDataUrl ? { profileImage: imageDataUrl } : {}),
         },
         { headers: { Authorization: `Bearer ${user?.token}` } }
@@ -513,7 +510,7 @@ export default function Profile() {
                 <Ionicons name="call-outline" size={20} color="#1A1A1A" style={styles.infoIcon} />
                 <View style={styles.infoTextWrapper}>
                   <Text style={styles.infoLabel}>{t('number')}</Text>
-                  <TextInput style={styles.infoInput} value={editNumber} onChangeText={setEditNumber} placeholder={t('enterPhone')} placeholderTextColor="#999" keyboardType="phone-pad" />
+                  <TextInput style={styles.infoInput} value={editNumber} placeholder={t('enterPhone')} placeholderTextColor="#999" keyboardType="phone-pad" editable={false} selectTextOnFocus={false} />
                 </View>
               </View>
             </View>
@@ -522,7 +519,7 @@ export default function Profile() {
                 <Ionicons name="mail-outline" size={20} color="#1A1A1A" style={styles.infoIcon} />
                 <View style={styles.infoTextWrapper}>
                   <Text style={styles.infoLabel}>{t('gmail')}</Text>
-                  <TextInput style={styles.infoInput} value={editGmail} onChangeText={setEditGmail} placeholder={t('enterEmail')} placeholderTextColor="#999" keyboardType="email-address" autoCapitalize="none" />
+                  <TextInput style={styles.infoInput} value={editGmail} placeholder={t('enterEmail')} placeholderTextColor="#999" keyboardType="email-address" autoCapitalize="none" editable={false} selectTextOnFocus={false} />
                 </View>
               </View>
             </View>

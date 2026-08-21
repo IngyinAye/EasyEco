@@ -221,9 +221,10 @@ export default function Calculate() {
                 visible={usageModalVisible}
                 onClose={handleCloseUsageModal}
                 type="current"
-                currentUnits={billIsAvailable ? billSummary.totalDailyUnits : 0}
-                currentCost={billIsAvailable ? billSummary.totalDailyCost : 0}
-                estimatedUnits={billIsAvailable ? billSummary.totalMonthlyUnits : 0}
+                currentUnits={billIsAvailable ? currentUnits : 0}
+                currentCost={billIsAvailable ? currentCost : 0}
+                estimatedUnits={billIsAvailable ? estimatedUnits : 0}
+                estimatedCost={billIsAvailable ? estimatedCost : 0}
               />
             </View>
 
@@ -234,13 +235,13 @@ export default function Calculate() {
             </View>
             <View style={styles.tableRow}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('currentUsage')}</Text>
-              <Text style={styles.rowValue}>{isReady ? `${formatUnits(billIsAvailable ? billSummary.totalDailyUnits : 0)} ${t('units')}` : 'Loading...'}</Text>
-              <Text style={styles.rowValue}>{isReady ? `${formatCost(billIsAvailable ? billSummary.totalDailyCost : 0)} MMK` : 'Loading...'}</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatUnits(billIsAvailable ? currentUnits : 0)} ${t('units')}` : 'Loading...'}</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatCost(billIsAvailable ? currentCost : 0)} MMK` : 'Loading...'}</Text>
             </View>
             <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
               <Text style={[styles.rowLabel, { flex: 1.2 }]}>{t('estimatedTotal')}</Text>
-              <Text style={styles.rowValue}>{isReady ? `${formatUnits(billIsAvailable ? billSummary.totalMonthlyUnits : 0)} ${t('units')}` : 'Loading...'}</Text>
-              <Text style={styles.rowValue}>{isReady ? `${formatCost(billIsAvailable ? billSummary.totalMonthlyCost : 0)} MMK` : 'Loading...'}</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatUnits(billIsAvailable ? estimatedUnits : 0)} ${t('units')}` : 'Loading...'}</Text>
+              <Text style={styles.rowValue}>{isReady ? `${formatCost(billIsAvailable ? estimatedCost : 0)} MMK` : 'Loading...'}</Text>
             </View>
           </View>
         </TouchableOpacity>

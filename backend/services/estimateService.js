@@ -180,36 +180,103 @@ function buildRecommendations({ month, snapshots = [], monthlyBudget }) {
 
   const latestSnapshot = getLatestSnapshot(snapshots);
   const devices = latestSnapshot?.appliances || [];
-  const candidates = devices.map((device) => {
-    const adjustedSnapshots = snapshots.map((snapshot) => ({
+  const billFor = (candidateSnapshots) => (
+    buildMonthlyEstimate({ month, snapshots: candidateSnapshots }).totalBill
+  );
+  const reduceDevice = (candidateSnapshots, applianceId, minutesToReduce) => (
+    candidateSnapshots.map((snapshot) => ({
       ...snapshot,
       appliances: (snapshot.appliances || []).map((appliance) => (
-        appliance.applianceId === device.applianceId
+        appliance.applianceId === applianceId
           ? {
               ...appliance,
-              minutesPerDay: Math.max((Number(appliance.minutesPerDay) || 0) - 60, 0),
+              minutesPerDay: Math.max(
+                (Number(appliance.minutesPerDay) || 0) - minutesToReduce,
+                0
+              ),
             }
           : { ...appliance }
       )),
-    }));
-    const reducedEstimate = buildMonthlyEstimate({ month, snapshots: adjustedSnapshots });
-    const savings = Math.max(totalBill - reducedEstimate.totalBill, 0);
+    }))
+  );
 
-    return {
+  // Rank appliances by their maximum possible saving. Then reduce them one at
+  // a time so every card reflects the bill after the preceding card's change.
+  const candidates = devices
+    .map((device) => {
+      const currentMinutesPerDay = Number(device.minutesPerDay) || 0;
+      const fullyReducedSnapshots = reduceDevice(
+        snapshots,
+        device.applianceId,
+        currentMinutesPerDay
+      );
+
+      return {
+        ...device,
+        currentMinutesPerDay,
+        maximumSavings: Math.max(totalBill - billFor(fullyReducedSnapshots), 0),
+      };
+    })
+    .filter((device) => device.currentMinutesPerDay > 0 && device.maximumSavings > 0)
+    .sort((a, b) => b.maximumSavings - a.maximumSavings)
+    .slice(0, 3);
+
+  let workingSnapshots = snapshots;
+  let remainingSavings = overBudgetAmount;
+  const recommendations = [];
+
+  for (const device of candidates) {
+    if (remainingSavings <= 0) break;
+
+    const billBefore = billFor(workingSnapshots);
+    const fullyReducedSnapshots = reduceDevice(
+      workingSnapshots,
+      device.applianceId,
+      device.currentMinutesPerDay
+    );
+    const maximumSavings = Math.max(billBefore - billFor(fullyReducedSnapshots), 0);
+    const targetSavings = Math.min(remainingSavings, maximumSavings);
+
+    // Find the smallest daily reduction that meets this card's remaining
+    // saving target. Fractional minutes keep decimal-unit bills accurate.
+    let low = 0;
+    let high = device.currentMinutesPerDay;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const middle = (low + high) / 2;
+      const middleBill = billFor(reduceDevice(
+        workingSnapshots,
+        device.applianceId,
+        middle
+      ));
+
+      if (billBefore - middleBill >= targetSavings) high = middle;
+      else low = middle;
+    }
+
+    const minutesToReduce = high;
+    const nextSnapshots = reduceDevice(
+      workingSnapshots,
+      device.applianceId,
+      minutesToReduce
+    );
+    const savings = Math.max(billBefore - billFor(nextSnapshots), 0);
+
+    if (savings <= 0) continue;
+
+    recommendations.push({
       applianceId: device.applianceId,
       name: device.name,
       category: device.category,
-      currentMinutesPerDay: Number(device.minutesPerDay) || 0,
-      suggestedMinutesPerDay: Math.max((Number(device.minutesPerDay) || 0) - 60, 0),
-      reducedHoursPerDay: 1,
-      savings,
-    };
-  });
+      currentMinutesPerDay: device.currentMinutesPerDay,
+      suggestedMinutesPerDay: Math.max(device.currentMinutesPerDay - minutesToReduce, 0),
+      reducedMinutesPerDay: minutesToReduce,
+      reducedHoursPerDay: minutesToReduce / 60,
+      savings: round(savings, 2),
+    });
 
-  const recommendations = candidates
-    .filter((item) => item.currentMinutesPerDay > 0 && item.savings > 0)
-    .sort((a, b) => b.savings - a.savings)
-    .slice(0, 3);
+    workingSnapshots = nextSnapshots;
+    remainingSavings = Math.max(remainingSavings - savings, 0);
+  }
 
   return {
     month,

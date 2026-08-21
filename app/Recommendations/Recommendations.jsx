@@ -2,10 +2,9 @@ import {
   StyleSheet, Text, View, TouchableOpacity, Image, ScrollView, SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useUsage } from '../Usage/UsageContext';
-import { generateDetailedRecommendations } from '../utils/billing';
 
 const ICON_MAP = {
   fridge: require('../../assets/Refigerator.png'),
@@ -48,20 +47,35 @@ export default function Recommendations() {
   // ✅ FIX: get getUsage from context
   const {
     devices,
-    monthlyBudget,
-    getUsage,
-    getForecast,
+    recommendations,
+    fetchRecommendations,
+    isLoading,
   } = useUsage();
 
-  // ✅ FIX: pass getUsage as the first argument
-  const forecast = getForecast();
-  const isLoading = false;
-  const recommendationResult = generateDetailedRecommendations(getUsage, [], monthlyBudget);
-  const isOverBudget = forecast.isOverBudget;
-  const overBudgetAmount = forecast.overBudgetAmount;
-  const recommendationItems = recommendationResult.recommendations.map((item) => ({
+  useEffect(() => {
+    fetchRecommendations().catch(() => undefined);
+  }, [fetchRecommendations]);
+
+  const isOverBudget = recommendations?.isOverBudget ?? false;
+  const overBudgetAmount = recommendations?.overBudgetAmount ?? 0;
+  const formatReductionTime = (minutes) => {
+    const totalMinutes = Math.max(Math.round(Number(minutes) || 0), 0);
+    const hours = Math.floor(totalMinutes / 60);
+    const remainingMinutes = totalMinutes % 60;
+
+    if (hours > 0 && remainingMinutes > 0) {
+      return `${hours} hr ${remainingMinutes} min/day`;
+    }
+
+    if (hours > 0) return `${hours} hr/day`;
+    return `${remainingMinutes} min/day`;
+  };
+
+  const recommendationItems = (recommendations?.recommendations || []).map((item) => ({
     ...item,
-    category: devices.find((device) => device.id === item.id)?.categoryId,
+    id: item.applianceId,
+    category: item.category || devices.find((device) => device.id === item.applianceId)?.categoryId,
+    recommendation: `Reduce ${item.name} usage by ${formatReductionTime(item.reducedMinutesPerDay)}.`,
   }));
 
   const renderIcon = (type) => {

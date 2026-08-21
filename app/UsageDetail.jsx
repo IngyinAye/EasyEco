@@ -8,7 +8,15 @@ import { formatCost, formatUnits, summarizeUsageBill } from './utils/billing';
 import { useLanguage } from './context/LanguageContext';
 
 // ===== COMPONENT =====
-export default function UsageDetail({ visible, onClose, type = 'current' }) {
+export default function UsageDetail({
+  visible,
+  onClose,
+  type = 'current',
+  currentUnits,
+  currentCost,
+  estimatedUnits,
+  estimatedCost,
+}) {
   const { getUsage } = useUsage();
   const { t } = useLanguage();
   const {
@@ -20,6 +28,10 @@ export default function UsageDetail({ visible, onClose, type = 'current' }) {
   } = summarizeUsageBill(getUsage);
 
   const isCurrent = type === 'current';
+  const displayedCurrentUnits = currentUnits ?? totalDailyUnits;
+  const displayedCurrentCost = currentCost ?? totalDailyCost;
+  const displayedEstimatedUnits = estimatedUnits ?? totalMonthlyUnits;
+  const displayedEstimatedCost = estimatedCost ?? totalMonthlyCost;
   const displayItems = allItems.map(item => ({
     ...item,
     units: isCurrent ? item.dailyUnits : item.monthlyUnits,
@@ -68,15 +80,15 @@ export default function UsageDetail({ visible, onClose, type = 'current' }) {
           {/* Summary */}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('currentUsage')}</Text>
-           <Text style={styles.summaryUnits}>{formatUnits(totalDailyUnits)} {t('units')}</Text>
-            <Text style={styles.summaryCost}>{formatCost(totalDailyCost)} MMK</Text>
+           <Text style={styles.summaryUnits}>{formatUnits(displayedCurrentUnits)} {t('units')}</Text>
+            <Text style={styles.summaryCost}>{formatCost(displayedCurrentCost)} MMK</Text>
 
           </View>
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('estimatedTotal')}</Text>
-            <Text style={styles.summaryUnits}>{formatUnits(totalMonthlyUnits)} {t('units')}</Text>
-            <Text style={styles.summaryCost}>{formatCost(totalMonthlyCost)} MMK</Text>
+            <Text style={styles.summaryUnits}>{formatUnits(displayedEstimatedUnits)} {t('units')}</Text>
+            <Text style={styles.summaryCost}>{formatCost(displayedEstimatedCost)} MMK</Text>
           </View>
         </View>
       </View>
