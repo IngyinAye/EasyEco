@@ -39,9 +39,9 @@ function buildDailyBreakdown(appliances = []) {
 }
 
 function calculateTieredBill(totalUnits) {
-  // YESC's calculator bills the displayed whole-unit consumption. Keep the
-  // rate calculation aligned with the unit shown in the mobile application.
-  let remaining = Math.round(Math.max(Number(totalUnits) || 0, 0));
+  // Preserve decimal consumption so the rate calculation matches YESC's
+  // calculator (for example, 35.2 units × 50 MMK = 1,760 MMK).
+  let remaining = Math.max(Number(totalUnits) || 0, 0);
   let totalBill = 0;
 
   for (const tier of TARIFF_TIERS) {

@@ -278,29 +278,14 @@ const loginUser = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const { name, phoneNumber, email, profileImage } = req.body;
+    const { name, profileImage } = req.body;
 
     if (!name?.trim()) {
       return res.status(400).json({ message: 'Name is required.' });
     }
 
-    const normalizedPhoneNumber = phoneNumber?.trim();
-
-    if (normalizedPhoneNumber) {
-      const existingPhoneUser = await User.findOne({
-        phoneNumber: normalizedPhoneNumber,
-        _id: { $ne: req.userId },
-      });
-
-      if (existingPhoneUser) {
-        return res.status(400).json({ message: 'That phone number is already in use.' });
-      }
-    }
-
     const updates = {
       name: name.trim(),
-      email: email?.trim() || undefined,
-      ...(normalizedPhoneNumber ? { phoneNumber: normalizedPhoneNumber } : {}),
     };
 
     if (profileImage) {
